@@ -1,0 +1,12 @@
+{
+  "projectId": "spicetree-restaurant",
+  "appId": "1:302556083805:web:2424bb7db2ce43bcf77fb4",
+  "apiKey": "AIzaSyA8Ek_sgIBZuWpQK2Q3AyubZDVDmqa2YV8",
+  "authDomain": "spicetree-restaurant.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "spicetree-restaurant.firebasestorage.app",
+  "messagingSenderId": "302556083805",
+  "measurementId": "G-0FFSK6YWGB",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
+}

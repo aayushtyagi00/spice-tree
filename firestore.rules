@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function: Checks if the requester is an authorized admin
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'tyagiaayush3030@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)))
+      );
+    }
+
+    // Menu Items: Read by anyone; modified ONLY by admins
+    match /menuItems/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Delivery Zones: Read by anyone; modified ONLY by admins
+    match /deliveryZones/{zoneId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    // Orders:
+    // - Customers (guest or authenticated) can place an order with validated fields
+    // - Authenticated users can list/query only their own orders
+    // - Guest users with the exact document ID can read (get) their order tracking
+    // - Admins have full access to read, update status, and manage all orders
+    match /orders/{orderId} {
+      allow create: if request.resource.data.customerName is string &&
+                       request.resource.data.phone is string &&
+                       request.resource.data.total is number &&
+                       request.resource.data.total >= 0 &&
+                       request.resource.data.items is list;
+      // Single document lookup (allows guest order tracking via exact order doc ID)
+      allow get: if isAdmin() || 
+                    (request.auth != null && (
+                      resource.data.userId == request.auth.uid ||
+                      (resource.data.customerEmail != null && resource.data.customerEmail == request.auth.token.email)
+                    )) ||
+                    resource.data.userId == null;
+      // Collection querying / listing (only admins or authenticated owners, preventing data harvesting)
+      allow list: if isAdmin() || (
+        request.auth != null && (
+          resource.data.userId == request.auth.uid ||
+          (resource.data.customerEmail != null && resource.data.customerEmail == request.auth.token.email)
+        )
+      );
+      allow update, delete: if isAdmin();
+    }
+    
+    // Reservations:
+    // - Customers can submit reservations with valid structure
+    // - Only admins can view, update, or cancel reservations
+    match /reservations/{reservationId} {
+      allow create: if request.resource.data.name is string &&
+                       request.resource.data.phone is string &&
+                       request.resource.data.date is string &&
+                       request.resource.data.guests is number;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // Admins Whitelist:
+    // - Only the designated Super Admin (tyagiaayush3030@gmail.com) can add or remove admins
+    // - Authenticated users can check if their own ID/email exists in the admin list
+    match /admins/{adminId} {
+      allow read: if isAdmin() || (
+        request.auth != null && (
+          request.auth.uid == adminId ||
+          request.auth.token.email == adminId
+        )
+      );
+      allow write: if request.auth != null && request.auth.token.email == 'tyagiaayush3030@gmail.com';
+    }
+
+    // Restaurant Settings (operating hours, fees, taxes):
+    // - Read by anyone so customer frontend functions properly
+    // - Modified ONLY by admins
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+  }
+}
