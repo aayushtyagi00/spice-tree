@@ -34,7 +34,13 @@ export const Navbar: React.FC = () => {
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [isTrackerDismissed, setIsTrackerDismissed] = useState(false);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Reset dismissed state whenever active order changes or status updates
+  useEffect(() => {
+    setIsTrackerDismissed(false);
+  }, [latestActiveOrder?.id, latestActiveOrder?.status]);
 
   // Close profile dropdown on click outside
   useEffect(() => {
@@ -638,41 +644,74 @@ export const Navbar: React.FC = () => {
           document.body
         )}
 
-      {/* Floating Active Order Live Tracker Pill */}
-      {latestActiveOrder && 
-       latestActiveOrder.status !== 'Delivered' && 
-       latestActiveOrder.status !== 'Cancelled' && 
-       activeTab !== 'confirmation' && 
-       activeTab !== 'orders' && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 z-30 sm:max-w-sm pointer-events-auto">
-          <div 
-            id="floating-live-order-pill"
-            onClick={() => setActiveTab('confirmation')}
-            className="bg-[#1b1c15] text-white p-3 sm:px-4 sm:py-3 rounded-2xl shadow-2xl border border-stone-700/60 flex items-center justify-between gap-3 cursor-pointer hover:bg-black transition-all group"
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-[#a03f28] flex items-center justify-center text-white flex-shrink-0">
-                <ChefHat className="w-4 h-4 text-[#ffdad2] animate-bounce" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-bold truncate">Order #{latestActiveOrder.orderNumber}</span>
-                  <span className="text-[10px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.2 rounded-xs uppercase">
-                    {latestActiveOrder.status}
-                  </span>
+      {/* Floating Active Order Live Tracker Pill - Mounted via React Portal directly to document.body to prevent any header backdrop-filter or stacking context overlap */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {!isTrackerDismissed &&
+             latestActiveOrder &&
+             latestActiveOrder.status !== 'Delivered' &&
+             latestActiveOrder.status !== 'Cancelled' &&
+             activeTab !== 'confirmation' &&
+             activeTab !== 'orders' && (
+              <motion.div
+                initial={{ opacity: 0, y: 30, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.95 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 sm:max-w-md pointer-events-auto"
+                style={{ position: 'fixed', bottom: '1.25rem', zIndex: 9990 }}
+              >
+                <div
+                  id="floating-live-order-pill"
+                  onClick={() => setActiveTab('confirmation')}
+                  className="bg-[#1b1c15] text-white p-3 sm:px-4 sm:py-3 rounded-2xl shadow-2xl border border-stone-700/80 flex items-center justify-between gap-3 cursor-pointer hover:bg-black transition-all group ring-1 ring-white/10"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-xl bg-[#a03f28] flex items-center justify-center text-white flex-shrink-0 relative">
+                      <ChefHat className="w-4 h-4 text-[#ffdad2] animate-bounce" />
+                      <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold truncate">Order #{latestActiveOrder.orderNumber}</span>
+                        <span className="text-[10px] bg-amber-400 text-amber-950 font-bold px-1.5 py-0.2 rounded-xs uppercase">
+                          {latestActiveOrder.status}
+                        </span>
+                      </div>
+                      <p className="text-[10.5px] text-stone-300 truncate">
+                        {latestActiveOrder.estimatedDeliveryTime || 'Kitchen preparing food'} • Tap to track live
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1 text-xs font-bold text-[#ffdad2] group-hover:translate-x-0.5 transition-transform">
+                      <span>Track</span>
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                    <button
+                      type="button"
+                      id="dismiss-live-tracker-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsTrackerDismissed(true);
+                      }}
+                      className="p-1 rounded-lg text-stone-400 hover:text-white hover:bg-stone-800 transition-colors cursor-pointer"
+                      title="Dismiss tracker notification"
+                      aria-label="Dismiss order tracker"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <p className="text-[10.5px] text-stone-300 truncate">
-                  {latestActiveOrder.estimatedDeliveryTime || 'Kitchen preparing food'} • Tap to track live
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 text-xs font-bold text-[#ffdad2] group-hover:translate-x-0.5 transition-transform flex-shrink-0">
-              <span>Track</span>
-              <ChevronRight className="w-4 h-4" />
-            </div>
-          </div>
-        </div>
-      )}
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </header>
   );
 };

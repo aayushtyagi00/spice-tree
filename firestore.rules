@@ -29,11 +29,28 @@ service cloud.firestore {
     // - Guest users with the exact document ID can read (get) their order tracking
     // - Admins have full access to read, update status, and manage all orders
     match /orders/{orderId} {
+      // Validate order creation:
+      // - Customer name, phone, items list, and non-negative total are strictly required
+      // - Item list must be reasonable (1 to 50 items) to prevent resource exhaustion / payload stuffing
+      // - Prevents spoofing of other users' UIDs: if authenticated, userId must either match request.auth.uid or be null; if unauthenticated, userId must be null or omitted
+      // - Prevents forging final order statuses directly from the client (initial status can only be 'Placed' or 'Preparing')
       allow create: if request.resource.data.customerName is string &&
+                       request.resource.data.customerName.size() > 0 &&
+                       request.resource.data.customerName.size() <= 100 &&
                        request.resource.data.phone is string &&
+                       request.resource.data.phone.size() >= 10 &&
+                       request.resource.data.phone.size() <= 25 &&
                        request.resource.data.total is number &&
                        request.resource.data.total >= 0 &&
-                       request.resource.data.items is list;
+                       request.resource.data.items is list &&
+                       request.resource.data.items.size() > 0 &&
+                       request.resource.data.items.size() <= 50 &&
+                       (
+                         (request.auth == null && (!('userId' in request.resource.data) || request.resource.data.userId == null)) ||
+                         (request.auth != null && (!('userId' in request.resource.data) || request.resource.data.userId == null || request.resource.data.userId == request.auth.uid))
+                       ) &&
+                       (!('status' in request.resource.data) || request.resource.data.status == 'Placed' || request.resource.data.status == 'Preparing');
+
       // Single document lookup (allows guest order tracking via exact order doc ID)
       allow get: if isAdmin() || 
                     (request.auth != null && (
@@ -41,6 +58,7 @@ service cloud.firestore {
                       (resource.data.customerEmail != null && resource.data.customerEmail == request.auth.token.email)
                     )) ||
                     resource.data.userId == null;
+
       // Collection querying / listing (only admins or authenticated owners, preventing data harvesting)
       allow list: if isAdmin() || (
         request.auth != null && (
@@ -48,6 +66,8 @@ service cloud.firestore {
           (resource.data.customerEmail != null && resource.data.customerEmail == request.auth.token.email)
         )
       );
+
+      // Only authorized admins can update order statuses or delete records
       allow update, delete: if isAdmin();
     }
     
@@ -56,22 +76,31 @@ service cloud.firestore {
     // - Only admins can view, update, or cancel reservations
     match /reservations/{reservationId} {
       allow create: if request.resource.data.name is string &&
+                       request.resource.data.name.size() > 0 &&
+                       request.resource.data.name.size() <= 100 &&
                        request.resource.data.phone is string &&
+                       request.resource.data.phone.size() >= 10 &&
+                       request.resource.data.phone.size() <= 25 &&
                        request.resource.data.date is string &&
-                       request.resource.data.guests is number;
+                       request.resource.data.guests is number &&
+                       request.resource.data.guests >= 1 &&
+                       request.resource.data.guests <= 50 &&
+                       (!('status' in request.resource.data) || request.resource.data.status == 'pending');
       allow read, update, delete: if isAdmin();
     }
 
     // Admins Whitelist:
     // - Only the designated Super Admin (tyagiaayush3030@gmail.com) can add or remove admins
     // - Authenticated users can check if their own ID/email exists in the admin list
+    // - Listing all admins requires already being an authorized admin
     match /admins/{adminId} {
-      allow read: if isAdmin() || (
+      allow get: if isAdmin() || (
         request.auth != null && (
           request.auth.uid == adminId ||
           request.auth.token.email == adminId
         )
       );
+      allow list: if isAdmin();
       allow write: if request.auth != null && request.auth.token.email == 'tyagiaayush3030@gmail.com';
     }
 
@@ -84,3 +113,4 @@ service cloud.firestore {
     }
   }
 }
+

@@ -16,9 +16,23 @@ import { AdminView } from './components/admin/AdminView';
 const AppContent: React.FC = () => {
   const { activeTab } = useCart();
 
-  // Scroll to top whenever active tab changes
+  // Scroll to top and update document title whenever active tab changes
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const tabTitles: Record<string, string> = {
+      home: 'Spice Tree | Pure Veg Multi-Cuisine Restaurant & Food Delivery in Phagwara',
+      menu: 'Order Online Food Menu | Spice Tree Pure Veg Phagwara',
+      checkout: 'Complete Checkout & Food Delivery | Spice Tree Phagwara',
+      confirmation: 'Live Food Tracker & Status | Spice Tree Phagwara',
+      orders: 'My Orders & Food Status | Spice Tree Phagwara',
+      about: 'About Spice Tree Pure Veg Dining | Phagwara',
+      admin: 'Staff & Kitchen Terminal | Spice Tree Admin'
+    };
+
+    if (tabTitles[activeTab]) {
+      document.title = tabTitles[activeTab];
+    }
   }, [activeTab]);
 
   if (activeTab === 'admin') {

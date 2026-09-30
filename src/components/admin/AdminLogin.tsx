@@ -4,9 +4,10 @@ import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  signOut
 } from 'firebase/auth';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../../firebase/config';
 import { Lock, Mail, ShieldAlert, ArrowLeft, KeyRound, UserCheck, CheckCircle2 } from 'lucide-react';
 import { useCart } from '../../context/CartContext';
@@ -27,7 +28,38 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
 
   // Helper to verify if an email is in the authorized admin registry
   const checkAdminAuthorized = async (cleanEmail: string) => {
+    // Master Super Admin account check
+    if (cleanEmail.toLowerCase() === 'tyagiaayush3030@gmail.com') {
+      return {
+        id: auth.currentUser?.uid || 'admin-super-owner',
+        email: 'tyagiaayush3030@gmail.com',
+        name: auth.currentUser?.displayName || 'Aayush Tyagi',
+        role: 'Super Admin'
+      };
+    }
+
     try {
+      // 1. Direct document lookup by email doc ID
+      const directEmailDoc = await getDoc(doc(db, 'admins', cleanEmail.toLowerCase()));
+      if (directEmailDoc.exists()) {
+        return {
+          id: directEmailDoc.id,
+          ...(directEmailDoc.data() as { email?: string; name?: string; role?: string })
+        };
+      }
+
+      // 2. Direct document lookup by auth UID
+      if (auth.currentUser?.uid) {
+        const uidDoc = await getDoc(doc(db, 'admins', auth.currentUser.uid));
+        if (uidDoc.exists()) {
+          return {
+            id: uidDoc.id,
+            ...(uidDoc.data() as { email?: string; name?: string; role?: string })
+          };
+        }
+      }
+
+      // 3. Collection query
       const adminsSnapshot = await getDocs(collection(db, 'admins'));
       if (!adminsSnapshot.empty) {
         const adminDocs = adminsSnapshot.docs.map(d => ({
@@ -43,17 +75,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
       console.warn('Firestore admin lookup warning:', e);
     }
 
-    // Only allow permanent Super Admin fallback in case of Firestore offline/network error
-    if (cleanEmail.toLowerCase() === 'tyagiaayush3030@gmail.com') {
-      return {
-        id: 'admin-super-owner',
-        email: 'tyagiaayush3030@gmail.com',
-        name: 'Aayush Tyagi',
-        role: 'Super Admin'
-      };
-    }
-
-    // For all other users (including deleted admins), reject authorization
+    // For all other users, reject authorization
     return null;
   };
 
@@ -91,6 +113,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
           window.location.reload();
         }, 500);
       } else {
+        await signOut(auth);
         localStorage.removeItem('spicetree_admin_session');
         setErrorMessage(
           `Access Denied: Google Account "${userEmail}" is not registered in the authorized Spice Tree administrators list. Please contact the Super Admin.`
@@ -128,32 +151,19 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
     setIsLoading(true);
 
     try {
-      // 1. Verify if the email is allowed in the 'admins' registry
-      const matchedAdmin = await checkAdminAuthorized(cleanEmail);
-
-      if (!matchedAdmin) {
-        localStorage.removeItem('spicetree_admin_session');
-        setIsLoading(false);
-        setErrorMessage(
-          `Access Denied: "${cleanEmail}" is not listed in the authorized restaurant admins database. Contact the Super Admin to request staff access.`
-        );
-        return;
-      }
-
-      // 2. Perform authentic Firebase Auth
-      let authenticatedName = matchedAdmin.name || cleanEmail.split('@')[0];
-      let authenticatedUid = matchedAdmin.id || '';
-
+      // 1. Perform authentic Firebase Auth FIRST
       let userCredential;
       try {
         userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
       } catch (signInErr: unknown) {
         const authError = signInErr as { code?: string };
         if (authError.code === 'auth/user-not-found') {
-          // First-time sign in for admin created in dashboard
-          userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-          if (authenticatedName) {
-            await updateProfile(userCredential.user, { displayName: authenticatedName });
+          // If first-time sign in for Super Admin owner
+          if (cleanEmail === 'tyagiaayush3030@gmail.com') {
+            userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+            await updateProfile(userCredential.user, { displayName: 'Aayush Tyagi' });
+          } else {
+            throw new Error('Admin account not found. Please contact the Super Admin to register your staff email.');
           }
         } else if (
           authError.code === 'auth/wrong-password' ||
@@ -161,7 +171,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
         ) {
           throw new Error('Incorrect password. Please verify your admin credentials.');
         } else if (authError.code === 'auth/operation-not-allowed') {
-          throw new Error('Email/Password login is not enabled in Firebase Console. Please enable it in Authentication > Sign-in method.');
+          throw new Error('Email/Password login is not enabled in Firebase Console. Please sign in with Google or enable it in Console.');
         } else {
           throw signInErr;
         }
@@ -171,17 +181,28 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onAdminAuthenticated, re
         throw new Error('Authentication failed. No valid user returned.');
       }
 
-      authenticatedUid = userCredential.user.uid;
-      if (userCredential.user.displayName) {
-        authenticatedName = userCredential.user.displayName;
+      // 2. Now with active authenticated user token, verify authorization in admins registry
+      const matchedAdmin = await checkAdminAuthorized(cleanEmail);
+
+      if (!matchedAdmin) {
+        await signOut(auth);
+        localStorage.removeItem('spicetree_admin_session');
+        setIsLoading(false);
+        setErrorMessage(
+          `Access Denied: "${cleanEmail}" is not listed in the authorized restaurant admins database. Contact the Super Admin to request staff access.`
+        );
+        return;
       }
+
+      let authenticatedName = matchedAdmin.name || userCredential.user.displayName || cleanEmail.split('@')[0];
+      const authenticatedUid = userCredential.user.uid;
 
       // Save authorized admin session
       const adminData = {
         id: authenticatedUid,
         email: cleanEmail,
         name: authenticatedName,
-        role: matchedAdmin.role || 'Super Admin',
+        role: matchedAdmin.role || 'Staff Admin',
         addedAt: Date.now()
       };
 

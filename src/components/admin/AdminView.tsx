@@ -35,7 +35,48 @@ export const AdminView: React.FC = () => {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isAuthorizedAdmin, setIsAuthorizedAdmin] = useState(false);
   const [revocationNotice, setRevocationNotice] = useState<string | null>(null);
-  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('dashboard');
+
+  // Sync active admin tab with URL hash (e.g. /admin#orders, /admin#menu)
+  const getInitialAdminTab = (): AdminTab => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace(/^#+/, '').toLowerCase();
+      if (['dashboard', 'menu', 'orders', 'reservations', 'settings'].includes(hash)) {
+        return hash as AdminTab;
+      }
+    }
+    return 'dashboard';
+  };
+
+  const [activeAdminTab, setActiveAdminTabState] = useState<AdminTab>(getInitialAdminTab);
+
+  const setActiveAdminTab = (tab: AdminTab) => {
+    setActiveAdminTabState(tab);
+    if (typeof window !== 'undefined') {
+      const targetHash = tab === 'dashboard' ? '' : `#${tab}`;
+      if (window.location.hash !== targetHash) {
+        window.history.pushState(null, '', `/admin${targetHash}`);
+      }
+    }
+  };
+
+  // Sync with browser Back and Forward navigation within admin sub-tabs
+  useEffect(() => {
+    const handleHashSync = () => {
+      const hash = window.location.hash.replace(/^#+/, '').toLowerCase();
+      if (['dashboard', 'menu', 'orders', 'reservations', 'settings'].includes(hash)) {
+        setActiveAdminTabState(hash as AdminTab);
+      } else if (!hash) {
+        setActiveAdminTabState('dashboard');
+      }
+    };
+    window.addEventListener('hashchange', handleHashSync);
+    window.addEventListener('popstate', handleHashSync);
+    return () => {
+      window.removeEventListener('hashchange', handleHashSync);
+      window.removeEventListener('popstate', handleHashSync);
+    };
+  }, []);
+
   const [orders, setOrders] = useState<Order[]>([]);
   const [pendingReservationsCount, setPendingReservationsCount] = useState<number>(0);
 
@@ -126,8 +167,12 @@ export const AdminView: React.FC = () => {
     };
   }, [currentUser, user]);
 
-  // 2. Real-time live listener on orders collection
+  // 2. Real-time live listener on orders collection (STRICTLY GUARDED: only when authorized admin)
   useEffect(() => {
+    if (!isAuthorizedAdmin) {
+      setOrders([]);
+      return;
+    }
     const ordersCol = collection(db, 'orders');
     const unsubscribeOrders = onSnapshot(
       ordersCol,
@@ -139,15 +184,19 @@ export const AdminView: React.FC = () => {
         setOrders(orderList);
       },
       error => {
-        console.warn('Orders snapshot error (using in-memory fallback):', error);
+        console.warn('Orders snapshot notice:', error);
       }
     );
 
     return () => unsubscribeOrders();
-  }, []);
+  }, [isAuthorizedAdmin]);
 
-  // 3. Real-time live listener on reservations collection for pending count
+  // 3. Real-time live listener on reservations collection for pending count (STRICTLY GUARDED: only when authorized admin)
   useEffect(() => {
+    if (!isAuthorizedAdmin) {
+      setPendingReservationsCount(0);
+      return;
+    }
     const resCol = collection(db, 'reservations');
     const unsubscribe = onSnapshot(
       resCol,
@@ -166,7 +215,7 @@ export const AdminView: React.FC = () => {
       }
     );
     return () => unsubscribe();
-  }, []);
+  }, [isAuthorizedAdmin]);
 
   const handleLogout = async () => {
     try {

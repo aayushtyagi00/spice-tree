@@ -100,43 +100,50 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [selectedPincode, setSelectedPincode] = useState<string>('144401');
   const [isCartOpen, setIsCartOpen] = useState(false);
   
-  // Initial active tab based on pathname or hash
-  const [activeTab, setActiveTabState] = useState<ActiveTab>(() => {
-    if (typeof window !== 'undefined') {
-      if (window.location.pathname.startsWith('/admin') || window.location.hash === '#admin') {
-        return 'admin';
-      }
-    }
+  // Helper to extract the active tab from window pathname or hash
+  const getTabFromLocation = (): ActiveTab => {
+    if (typeof window === 'undefined') return 'home';
+    const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+    const hash = window.location.hash.toLowerCase().replace(/^#+/, '');
+
+    if (path === 'admin' || hash === 'admin') return 'admin';
+    if (path === 'menu' || hash === 'menu') return 'menu';
+    if (path === 'orders' || hash === 'orders') return 'orders';
+    if (path === 'about' || hash === 'about') return 'about';
+    if (path === 'checkout' || hash === 'checkout') return 'checkout';
+    if (path === 'confirmation' || hash === 'confirmation') return 'confirmation';
     return 'home';
-  });
+  };
+
+  // Initial active tab based on real URL pathname or hash
+  const [activeTab, setActiveTabState] = useState<ActiveTab>(() => getTabFromLocation());
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
     if (typeof window !== 'undefined') {
-      if (tab === 'admin') {
-        if (!window.location.pathname.startsWith('/admin') && window.location.hash !== '#admin') {
-          window.location.hash = 'admin';
-        }
-      } else {
-        if (window.location.hash === '#admin') {
-          window.location.hash = '';
-        }
+      const currentTab = getTabFromLocation();
+      if (currentTab !== tab) {
+        const targetPath = tab === 'home' ? '/' : `/${tab}`;
+        window.history.pushState({ tab }, '', targetPath);
+      }
+      // Clean up hash if not in admin tab
+      if (tab !== 'admin' && window.location.hash === '#admin') {
+        window.location.hash = '';
       }
     }
   };
 
-  // Sync hash listener
+  // Sync with browser Back and Forward navigation buttons & hash changes
   useEffect(() => {
-    const handleHashOrPop = () => {
-      if (window.location.pathname.startsWith('/admin') || window.location.hash === '#admin') {
-        setActiveTabState('admin');
-      }
+    const handleNavigationSync = () => {
+      const tab = getTabFromLocation();
+      setActiveTabState(tab);
     };
-    window.addEventListener('hashchange', handleHashOrPop);
-    window.addEventListener('popstate', handleHashOrPop);
+    window.addEventListener('popstate', handleNavigationSync);
+    window.addEventListener('hashchange', handleNavigationSync);
     return () => {
-      window.removeEventListener('hashchange', handleHashOrPop);
-      window.removeEventListener('popstate', handleHashOrPop);
+      window.removeEventListener('popstate', handleNavigationSync);
+      window.removeEventListener('hashchange', handleNavigationSync);
     };
   }, []);
 
@@ -216,6 +223,30 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Handle direct modal deep-link paths on initial page load (e.g. /reserve, /cart, /login)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase().replace(/^\/+|\/+$/g, '');
+      if (['reserve', 'reservation', 'book-table'].includes(path)) {
+        setIsReservationModalOpen(true);
+        window.history.replaceState({ tab: 'home' }, '', '/');
+      } else if (['cart', 'bag'].includes(path)) {
+        setIsCartOpen(true);
+        window.history.replaceState({ tab: 'menu' }, '', '/menu');
+      } else if (['login', 'signin', 'account'].includes(path)) {
+        setIsAuthModalOpen(true);
+        window.history.replaceState({ tab: 'home' }, '', '/');
+      } else if (
+        path &&
+        !['home', 'menu', 'orders', 'about', 'checkout', 'confirmation', 'admin'].includes(path) &&
+        !path.startsWith('admin')
+      ) {
+        // Canonical fallback for unrecognized URLs
+        window.history.replaceState({ tab: 'home' }, '', '/');
+      }
+    }
+  }, []);
 
   const setAppUser = (newUser: AppUser | null) => {
     setUserState(newUser);
