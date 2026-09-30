@@ -15,13 +15,17 @@ import {
   AlertCircle,
   ExternalLink,
   ChevronRight,
-  PackageCheck
+  PackageCheck,
+  Star,
+  AlertTriangle
 } from 'lucide-react';
 import { doc, getDoc, collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useCart } from '../context/CartContext';
 import { Order, OrderStatus } from '../types';
 import { motion } from 'motion/react';
+import { CancelOrderModal } from './CancelOrderModal';
+import { OrderFeedbackModal } from './OrderFeedbackModal';
 
 const STATUS_STEPS: OrderStatus[] = [
   'Placed',
@@ -48,6 +52,19 @@ export const MyOrdersView: React.FC = () => {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [searchedOrder, setSearchedOrder] = useState<Order | null>(null);
+
+  // Cancellation & Feedback Modal states
+  const [orderToCancel, setOrderToCancel] = useState<Order | null>(null);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [orderToReview, setOrderToReview] = useState<Order | null>(null);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+
+  const handleOrderUpdated = (updatedOrder: Order) => {
+    setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
+    if (searchedOrder && searchedOrder.id === updatedOrder.id) {
+      setSearchedOrder(updatedOrder);
+    }
+  };
 
   // Load all tracked orders
   useEffect(() => {
@@ -351,14 +368,42 @@ export const MyOrdersView: React.FC = () => {
                   </span>
                   {getStatusBadge(searchedOrder.status)}
                 </div>
-                <button
-                  id="view-searched-order-btn"
-                  onClick={() => trackOrder(searchedOrder.id)}
-                  className="px-4 py-1.5 bg-[#a03f28] hover:bg-[#853420] text-white rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  <span>Open Live Status & Bill</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-2">
+                  {searchedOrder.status === 'Placed' && (
+                    <button
+                      id="cancel-searched-order-btn"
+                      onClick={() => {
+                        setOrderToCancel(searchedOrder);
+                        setIsCancelModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-full text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                      <span>Cancel</span>
+                    </button>
+                  )}
+                  {searchedOrder.status === 'Delivered' && (
+                    <button
+                      id="review-searched-order-btn"
+                      onClick={() => {
+                        setOrderToReview(searchedOrder);
+                        setIsFeedbackModalOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-full text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      <span>{searchedOrder.rating ? `${searchedOrder.rating}★ Review` : 'Rate Meal'}</span>
+                    </button>
+                  )}
+                  <button
+                    id="view-searched-order-btn"
+                    onClick={() => trackOrder(searchedOrder.id)}
+                    className="px-4 py-1.5 bg-[#a03f28] hover:bg-[#853420] text-white rounded-full text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <span>Open Live Status & Bill</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
 
               <div className="text-xs text-stone-600 flex flex-wrap gap-x-4 gap-y-1">
@@ -393,14 +438,30 @@ export const MyOrdersView: React.FC = () => {
               </h2>
             </div>
 
-            <button
-              id="active-order-full-details-btn"
-              onClick={() => trackOrder(featuredOrder.id)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#a03f28] hover:bg-[#853420] text-white rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer"
-            >
-              <span>View Full Screen Tracker</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center gap-2">
+              {featuredOrder.status === 'Placed' && (
+                <button
+                  id="active-order-cancel-btn"
+                  onClick={() => {
+                    setOrderToCancel(featuredOrder);
+                    setIsCancelModalOpen(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                  <span>Cancel Order</span>
+                </button>
+              )}
+
+              <button
+                id="active-order-full-details-btn"
+                onClick={() => trackOrder(featuredOrder.id)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#a03f28] hover:bg-[#853420] text-white rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer"
+              >
+                <span>View Full Screen Tracker</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
           {/* Stepper Progress Bar */}
@@ -573,6 +634,16 @@ export const MyOrdersView: React.FC = () => {
                         <span className="truncate">{ord.address}</span>
                       </div>
                     )}
+                    {ord.status === 'Cancelled' && ord.cancelReason && (
+                      <div className="text-[11px] text-red-700 bg-red-50 px-2.5 py-1 rounded-lg border border-red-200 inline-block font-medium">
+                        Cancelled: {ord.cancelReason}
+                      </div>
+                    )}
+                    {ord.status === 'Delivered' && ord.feedbackComment && (
+                      <div className="text-[11px] text-stone-600 bg-[#fbfaf3] p-2.5 rounded-xl border border-[#dedbc8] italic leading-relaxed">
+                        "{ord.feedbackComment}"
+                      </div>
+                    )}
                   </div>
 
                   {/* Order footer row */}
@@ -584,6 +655,52 @@ export const MyOrdersView: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* Cancel Order Button (Active while Placed) */}
+                      {ord.status === 'Placed' && (
+                        <button
+                          id={`cancel-order-btn-${ord.id}`}
+                          onClick={() => {
+                            setOrderToCancel(ord);
+                            setIsCancelModalOpen(true);
+                          }}
+                          className="px-3.5 py-1.5 rounded-full text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition-colors cursor-pointer flex items-center gap-1"
+                          title="Cancel order before cooking begins"
+                        >
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+
+                      {/* Feedback & Rating Button (For Delivered Orders) */}
+                      {ord.status === 'Delivered' && (
+                        ord.rating ? (
+                          <button
+                            id={`view-review-btn-${ord.id}`}
+                            onClick={() => {
+                              setOrderToReview(ord);
+                              setIsFeedbackModalOpen(true);
+                            }}
+                            className="px-3 py-1.5 rounded-full text-xs font-semibold text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition-colors cursor-pointer flex items-center gap-1"
+                            title="Click to view or edit your review"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                            <span>{ord.rating}★ Rated</span>
+                          </button>
+                        ) : (
+                          <button
+                            id={`rate-order-btn-${ord.id}`}
+                            onClick={() => {
+                              setOrderToReview(ord);
+                              setIsFeedbackModalOpen(true);
+                            }}
+                            className="px-3.5 py-1.5 rounded-full text-xs font-bold text-[#1b4332] bg-[#beead1]/60 hover:bg-[#beead1] border border-[#a3d9bc] transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+                          >
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>Rate & Review</span>
+                          </button>
+                        )
+                      )}
+
                       <button
                         id={`reorder-btn-${ord.id}`}
                         onClick={() => handleReorder(ord)}
@@ -629,6 +746,22 @@ export const MyOrdersView: React.FC = () => {
           <span>Call +91 98765 43210</span>
         </a>
       </div>
+
+      {/* Cancel Order Dialog Modal */}
+      <CancelOrderModal
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        order={orderToCancel}
+        onCancelled={handleOrderUpdated}
+      />
+
+      {/* Feedback & Rating Modal */}
+      <OrderFeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        order={orderToReview}
+        onFeedbackSubmitted={handleOrderUpdated}
+      />
     </div>
   );
 };

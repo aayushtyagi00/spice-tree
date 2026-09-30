@@ -14,7 +14,8 @@ import {
   Filter,
   RefreshCw,
   ExternalLink,
-  ChevronDown
+  ChevronDown,
+  Star
 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase/config';
@@ -339,6 +340,55 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ orders }) => {
                         <strong>Rider Note:</strong> {order.deliveryInstructions}
                       </div>
                     )}
+
+                    {/* Customer Review / Feedback Box */}
+                    {order.rating && (
+                      <div className="p-3 bg-[#fbfaf3] rounded-xl border border-amber-200 text-xs space-y-1">
+                        <div className="flex items-center gap-1.5 text-amber-700 font-bold">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                          <span>Customer Rating: {order.rating} / 5 Stars</span>
+                          {order.feedbackAt && (
+                            <span className="text-stone-400 font-normal text-[10px]">
+                              • {formatTime(order.feedbackAt)}
+                            </span>
+                          )}
+                        </div>
+                        {order.feedbackTags && order.feedbackTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-0.5">
+                            {order.feedbackTags.map(tag => (
+                              <span key={tag} className="text-[10px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        {order.feedbackComment && (
+                          <p className="text-stone-700 italic pt-0.5">
+                            "{order.feedbackComment}"
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Cancellation Details Box */}
+                    {order.status === 'Cancelled' && (
+                      <div className="p-3 bg-red-50 rounded-xl border border-red-200 text-red-900 text-xs space-y-1">
+                        <div className="font-bold flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                          <span>Cancelled {order.cancelledBy === 'customer' ? 'by Customer' : 'by Restaurant Counter'}</span>
+                        </div>
+                        {order.cancelReason && (
+                          <p className="text-[11px] text-red-700">
+                            Reason: {order.cancelReason}
+                          </p>
+                        )}
+                        {order.cancelledAt && (
+                          <p className="text-[10px] text-stone-500">
+                            Cancelled at: {formatTime(order.cancelledAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -408,9 +458,23 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({ orders }) => {
 
                     {/* Cancel button */}
                     <button
-                      onClick={() => {
-                        if (window.confirm(`Cancel order #${order.orderNumber}?`)) {
-                          handleUpdateStatus(order.id, 'Cancelled');
+                      onClick={async () => {
+                        const reason = window.prompt(`Cancel order #${order.orderNumber}? Enter reason:`, 'Cancelled by restaurant counter');
+                        if (reason !== null) {
+                          setUpdatingOrderId(order.id);
+                          try {
+                            await updateDoc(doc(db, 'orders', order.id), {
+                              status: 'Cancelled',
+                              cancelledAt: Date.now(),
+                              cancelledBy: 'admin',
+                              cancelReason: reason.trim() || 'Cancelled by restaurant counter',
+                              updatedAt: Date.now()
+                            });
+                          } catch (err) {
+                            console.error('Failed to cancel order:', err);
+                          } finally {
+                            setUpdatingOrderId(null);
+                          }
                         }
                       }}
                       disabled={isUpdating || order.status === 'Cancelled'}

@@ -67,8 +67,78 @@ service cloud.firestore {
         )
       );
 
-      // Only authorized admins can update order statuses or delete records
-      allow update, delete: if isAdmin();
+      // Check if requester is the customer who placed this order
+      function isOrderCustomer() {
+        return (request.auth != null && (
+          resource.data.userId == request.auth.uid ||
+          (resource.data.customerEmail != null && resource.data.customerEmail == request.auth.token.email)
+        )) || resource.data.userId == null;
+      }
+
+      // Ensure critical financial, item, customer, and timestamps cannot be tampered with
+      function areCoreFieldsUnchanged() {
+        return request.resource.data.total == resource.data.total &&
+               request.resource.data.items == resource.data.items &&
+               request.resource.data.subtotal == resource.data.subtotal &&
+               request.resource.data.taxes == resource.data.taxes &&
+               request.resource.data.deliveryFee == resource.data.deliveryFee &&
+               request.resource.data.orderNumber == resource.data.orderNumber &&
+               request.resource.data.customerName == resource.data.customerName &&
+               request.resource.data.phone == resource.data.phone &&
+               request.resource.data.paymentMethod == resource.data.paymentMethod &&
+               request.resource.data.createdAt == resource.data.createdAt;
+      }
+
+      // Safe customer cancellation:
+      // - Customer can ONLY cancel while status is still 'Placed' (before kitchen prep starts)
+      // - Status must transition to 'Cancelled'
+      // - cancelledBy must be 'customer'
+      // - cancelledAt must be a valid timestamp
+      // - cancelReason is optional string (max 300 chars)
+      // - Financial and item data remain completely frozen
+      function isValidCustomerCancellation() {
+        return isOrderCustomer() &&
+               resource.data.status == 'Placed' &&
+               request.resource.data.status == 'Cancelled' &&
+               request.resource.data.cancelledBy == 'customer' &&
+               request.resource.data.cancelledAt is number &&
+               (!('cancelReason' in request.resource.data) || (
+                 request.resource.data.cancelReason is string &&
+                 request.resource.data.cancelReason.size() <= 300
+               )) &&
+               areCoreFieldsUnchanged();
+      }
+
+      // Safe customer rating & feedback:
+      // - Customer can ONLY rate fulfilled/delivered orders
+      // - Status MUST stay 'Delivered' (cannot change)
+      // - rating must be a valid score between 1 and 5
+      // - feedbackAt must be a valid timestamp
+      // - feedbackComment is optional string (max 600 chars)
+      // - feedbackTags is optional list (max 10 items)
+      // - Financial, item, and customer data remain completely frozen
+      function isValidCustomerFeedback() {
+        return isOrderCustomer() &&
+               resource.data.status == 'Delivered' &&
+               request.resource.data.status == 'Delivered' &&
+               request.resource.data.rating is number &&
+               request.resource.data.rating >= 1 &&
+               request.resource.data.rating <= 5 &&
+               request.resource.data.feedbackAt is number &&
+               (!('feedbackComment' in request.resource.data) || (
+                 request.resource.data.feedbackComment is string &&
+                 request.resource.data.feedbackComment.size() <= 600
+               )) &&
+               (!('feedbackTags' in request.resource.data) || (
+                 request.resource.data.feedbackTags is list &&
+                 request.resource.data.feedbackTags.size() <= 10
+               )) &&
+               areCoreFieldsUnchanged();
+      }
+
+      // Authorized admins can manage all fields; customers can only cancel or provide feedback within strict security bounds
+      allow update: if isAdmin() || isValidCustomerCancellation() || isValidCustomerFeedback();
+      allow delete: if isAdmin();
     }
     
     // Reservations:

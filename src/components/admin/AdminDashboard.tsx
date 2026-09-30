@@ -307,13 +307,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         {formatOrderTime(order.createdAt)}
                       </td>
                       <td className="py-3.5 pr-4">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
-                            statusColors[order.status] || 'bg-stone-100 text-stone-700'
-                          }`}
-                        >
-                          {order.status}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${
+                              statusColors[order.status] || 'bg-stone-100 text-stone-700'
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                          {order.rating && (
+                            <span className="text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              ⭐ {order.rating}/5 Rated
+                            </span>
+                          )}
+                          {order.status === 'Cancelled' && order.cancelReason && (
+                            <span className="text-[10px] text-red-700 bg-red-50 px-1.5 py-0.5 rounded border border-red-200 truncate max-w-[130px]" title={order.cancelReason}>
+                              {order.cancelReason}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 text-right">
                         <select

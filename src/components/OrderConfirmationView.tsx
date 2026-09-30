@@ -15,14 +15,20 @@ import {
   ShoppingBag,
   ExternalLink,
   PackageCheck,
-  Search
+  Search,
+  Star,
+  AlertTriangle,
+  RotateCcw,
+  MessageSquare
 } from 'lucide-react';
-import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { useCart } from '../context/CartContext';
 import { Order, OrderStatus } from '../types';
 import confetti from 'canvas-confetti';
 import { motion } from 'motion/react';
+import { CancelOrderModal } from './CancelOrderModal';
+import { OrderFeedbackModal } from './OrderFeedbackModal';
 
 const STATUS_STEPS: OrderStatus[] = [
   'Placed',
@@ -32,9 +38,11 @@ const STATUS_STEPS: OrderStatus[] = [
 ];
 
 export const OrderConfirmationView: React.FC = () => {
-  const { activeOrderId, setActiveTab } = useCart();
+  const { activeOrderId, setActiveTab, addToCart, setIsCartOpen } = useCart();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
   // Firestore real-time listener for current order
   useEffect(() => {
@@ -170,7 +178,7 @@ export const OrderConfirmationView: React.FC = () => {
 
       {/* Live Status Progression Tracker */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-[#e5e1d5] shadow-xs space-y-6">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-[#f0eee4] pb-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#f0eee4] pb-4">
           <div>
             <h3 className="font-serif font-bold text-lg text-[#1b1c15] flex items-center gap-2">
               <span className={`w-2.5 h-2.5 rounded-full ${order.status === 'Cancelled' ? 'bg-red-500' : order.status === 'Delivered' ? 'bg-emerald-500' : 'bg-emerald-500 animate-ping'}`}></span>
@@ -178,23 +186,63 @@ export const OrderConfirmationView: React.FC = () => {
             </h3>
             <p className="text-xs text-[#56423d]">
               {order.status === 'Cancelled'
-                ? 'This order has been cancelled by the restaurant.'
+                ? 'This order has been cancelled.'
+                : order.status === 'Placed'
+                ? 'Order registered. You can cancel free of charge before kitchen starts cooking.'
                 : 'Directly linked to live updates from the kitchen.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#beead1]/60 text-[#1b4332] text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Live Sync</span>
+          <div className="flex items-center gap-2">
+            {order.status === 'Placed' && (
+              <button
+                id="cancel-order-confirmation-btn"
+                onClick={() => setIsCancelModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-red-600" />
+                <span>Cancel Order</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#beead1]/60 text-[#1b4332] text-xs font-bold">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Live Sync</span>
+            </div>
           </div>
         </div>
 
         {order.status === 'Cancelled' ? (
-          <div className="p-6 bg-red-50 border border-red-200 rounded-2xl text-center space-y-2">
-            <h4 className="font-serif font-bold text-base text-red-800">Order Cancelled</h4>
-            <p className="text-xs text-red-600 max-w-md mx-auto">
-              This order has been cancelled. If any payment was deducted, it will be refunded shortly.
+          <div className="p-6 bg-red-50/80 border border-red-200 rounded-2xl text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-red-100 text-red-700 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <h4 className="font-serif font-bold text-lg text-red-900">Order #{order.orderNumber} Cancelled</h4>
+            {order.cancelReason && (
+              <p className="text-xs text-red-800 max-w-md mx-auto">
+                <strong>Cancellation Reason:</strong> {order.cancelReason}
+              </p>
+            )}
+            {order.cancelledAt && (
+              <p className="text-[11px] text-stone-500">
+                Cancelled on {new Date(order.cancelledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(order.cancelledAt).toLocaleDateString()}
+              </p>
+            )}
+            <p className="text-xs text-stone-600 max-w-md mx-auto">
+              If any online payment was deducted, it will be refunded to your source account automatically.
             </p>
+            <div className="pt-2 flex justify-center">
+              <button
+                onClick={() => {
+                  order.items.forEach(it => addToCart(it.menuItemId, it.quantity));
+                  setIsCartOpen(true);
+                }}
+                className="px-5 py-2.5 bg-[#a03f28] hover:bg-[#853420] text-white text-xs font-bold rounded-full transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reorder Items Into Cart</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* 4 Steps Timeline */
@@ -261,6 +309,81 @@ export const OrderConfirmationView: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Feedback & Review Card for Delivered Orders */}
+        {order.status === 'Delivered' && (
+          <div className="pt-4 border-t border-[#f0eee4]">
+            <div className="p-5 bg-[#fbfaf3] rounded-2xl border border-[#dedbc8] space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#e5e1d5] pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shadow-xs">
+                    <Star className="w-5 h-5 fill-amber-500 text-amber-500" />
+                  </div>
+                  <div>
+                    <h4 className="font-serif font-bold text-base text-[#1b1c15]">
+                      {order.rating ? 'Your Feedback & Review' : 'How Was Your Meal? Rate & Review'}
+                    </h4>
+                    <p className="text-xs text-[#56423d]">
+                      {order.rating
+                        ? 'Thank you for rating your dining experience with Spice Tree.'
+                        : 'Share feedback on dish flavors, warmth, and delivery to help our chefs.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  id="open-feedback-btn-confirmation"
+                  onClick={() => setIsFeedbackModalOpen(true)}
+                  className="px-4 py-2 bg-[#1b4332] hover:bg-[#153427] text-white rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                >
+                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                  <span>{order.rating ? 'Edit Your Review' : 'Rate & Write Feedback'}</span>
+                </button>
+              </div>
+
+              {order.rating ? (
+                <div className="space-y-2 pt-1 text-xs">
+                  <div className="flex items-center gap-1.5 text-amber-500">
+                    {[1, 2, 3, 4, 5].map(st => (
+                      <Star
+                        key={st}
+                        className={`w-4 h-4 ${st <= (order.rating || 0) ? 'fill-amber-400 text-amber-500' : 'text-stone-300'}`}
+                      />
+                    ))}
+                    <span className="font-bold text-[#1b1c15] ml-1.5">
+                      {order.rating} / 5 Stars
+                    </span>
+                    {order.feedbackAt && (
+                      <span className="text-stone-400 text-[11px] ml-2">
+                        • {new Date(order.feedbackAt).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+
+                  {order.feedbackTags && order.feedbackTags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {order.feedbackTags.map(tag => (
+                        <span key={tag} className="px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#beead1] text-[#1b4332]">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {order.feedbackComment && (
+                    <p className="text-stone-700 italic bg-white p-3 rounded-xl border border-[#e5e1d5] leading-relaxed">
+                      "{order.feedbackComment}"
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center justify-between text-xs text-stone-500 pt-1">
+                  <span>Tap "Rate & Write Feedback" to submit star rating and compliments.</span>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -418,6 +541,22 @@ export const OrderConfirmationView: React.FC = () => {
           Return to Home Page
         </button>
       </div>
+
+      {/* Cancel Order Dialog Modal */}
+      <CancelOrderModal
+        isOpen={isCancelModalOpen}
+        onClose={() => setIsCancelModalOpen(false)}
+        order={order}
+        onCancelled={(updatedOrder) => setOrder(updatedOrder)}
+      />
+
+      {/* Feedback & Rating Modal */}
+      <OrderFeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        order={order}
+        onFeedbackSubmitted={(updatedOrder) => setOrder(updatedOrder)}
+      />
     </div>
   );
 };

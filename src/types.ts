@@ -92,6 +92,13 @@ export interface Order {
   status: OrderStatus;
   createdAt: number;
   estimatedDeliveryTime?: string;
+  cancelledAt?: number;
+  cancelReason?: string;
+  cancelledBy?: 'customer' | 'admin';
+  rating?: number; // 1 to 5 stars
+  feedbackComment?: string;
+  feedbackTags?: string[];
+  feedbackAt?: number;
 }
 
 export interface Reservation {
