@@ -2,5 +2,5 @@
   "name": "Spice Tree",
   "description": "Pure-vegetarian multi-cuisine ordering web app for Spice Tree in Phagwara, Punjab offering Delivery, Takeaway, and Dine-in.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

@@ -1,0 +1,9 @@
+{
+  "projectId": "spicetree-restaurant",
+  "appId": "YOUR_APP_ID",
+  "apiKey": "YOUR_API_KEY",
+  "authDomain": "spicetree-restaurant.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "spicetree-restaurant.firebasestorage.app",
+  "messagingSenderId": "YOUR_MESSAGING_SENDER_ID"
+}
